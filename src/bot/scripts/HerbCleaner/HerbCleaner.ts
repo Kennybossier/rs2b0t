@@ -3,6 +3,7 @@ import { Execution } from '../../api/execution/Execution.js';
 import { Game } from '../../api/game/Game.js';
 import { Inventory, type InvItem } from '../../api/inventory/Inventory.js';
 import { Bank } from '../../api/bank/Bank.js';
+import { openBankAccess } from '../../api/bank/Banking.js';
 import { Skills } from '../../api/skills/Skills.js';
 import { Paint } from '../../paint/Paint.js';
 import { Traversal } from '../../api/walking/Traversal.js';
@@ -54,7 +55,7 @@ export default class HerbCleaner extends TaskBot {
 
         if (this.eligible.length === 0) {
             this.log(`No herbs to clean — Herblore ${Skills.level('herblore')} with no selectable herb at or above level. Stopping.`);
-            ScriptRunner.stop('no selectable herbs at the player\'s Herblore level');
+            this.requestFinish('no selectable herbs at the player\'s Herblore level');
             return;
         }
 
@@ -84,7 +85,7 @@ export default class HerbCleaner extends TaskBot {
         // Why: a withdraw that fails against a loaded bank means that herb is gone, so once every eligible herb is marked the trips have nothing left to fetch.
         if (this.targets().length === 0) {
             this.log('every selected herb is empty in the bank, stopping');
-            ScriptRunner.stop('every selected herb is empty in the bank');
+            this.requestFinish('every selected herb is empty in the bank');
             return;
         }
         return super.loop();
@@ -123,7 +124,7 @@ export default class HerbCleaner extends TaskBot {
         this.log(`Herb ${herb.level} required for ${herb.name} — skipping it`);
         if (this.eligible.length === 0) {
             this.log('no cleanable herbs remain — stopping');
-            ScriptRunner.stop('no cleanable herbs remain');
+            this.requestFinish('no cleanable herbs remain');
         }
     }
     takeRefusal(): boolean {
@@ -246,7 +247,8 @@ class BankTrip implements Task {
         }
 
         const access = bank.access ?? BOOTH;
-        if (!(await Bank.openNearestAccess(access, m => this.bot.log(`  ${m}`)))) {
+        const log = (m: string) => this.bot.log(`  ${m}`);
+        if (!(await openBankAccess(bank, access, log))) {
             this.bot.log('could not open the bank — retrying');
             return;
         }
@@ -324,7 +326,7 @@ class BankTrip implements Task {
             this.bot.log(`banked @ ${bank.name}: gave ${deposited} items, took ${withdrew} grimy herbs`);
         } else {
             this.bot.log('nothing to deposit and the bank has no eligible herbs — stopping');
-            ScriptRunner.stop('bank has no eligible herbs');
+            this.bot.requestFinish('bank has no eligible herbs');
         }
     }
 }

@@ -1,7 +1,9 @@
-import { readFileSync } from 'node:fs';
-import { Buffer } from 'node:buffer';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { after } from 'node:test';
 
 Reflect.set(globalThis, '__rs2b0t', { apiVersion: 1, LoopingBot: class {}, defineBot: x => x });
 const base = new URL('../../src/bot/scripts/PinkSkirtSummoningRitual/', import.meta.url);
@@ -12,7 +14,16 @@ const source =
     logic +
     native.slice(native.indexOf('function visiblePink()')).replace('export default class', 'class') +
     '\nexport default { create: () => new PinkSkirtSummoningRitual() };';
-const mod = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+// Why: Bun 1.3.14 treats large data URLs as package paths and fails with NameTooLong.
+const moduleDir = mkdtempSync(join(tmpdir(), 'pink-skirt-ritual-'));
+after(() => rmSync(moduleDir, { recursive: true, force: true }));
+let serial = 0;
+async function loadScript() {
+    const path = join(moduleDir, `${serial++}.mjs`);
+    writeFileSync(path, source);
+    return import(pathToFileURL(path).href);
+}
+const mod = await loadScript();
 const { FormationPeer, PATTERNS, CAPACITY, poseTile, queueTile, stagingTile, nextStep } = mod;
 const anchor = { x: 100, z: 100, level: 0 };
 const eq = (a, b) => mod.distance(a, b) === 0;
@@ -168,7 +179,6 @@ test('duplicate observations do not advance and every target uses legal one-tile
         }
 });
 
-let serial = 0;
 async function fixture() {
     const s = { tick: 1, gp: 99, skirt: 1, worn: false, hp: 10, free: 20, shop: false, bank: false, depositWorks: true, events: [], steps: [], logs: [] };
     const raw = { name: 'Test dancer', ready: true, appearance: [], routeX: [3222], routeZ: [3218] };
@@ -286,7 +296,7 @@ async function fixture() {
         }
     };
     Reflect.set(globalThis, '__rs2b0t', mocked);
-    const fresh = await import(`data:text/javascript;base64,${Buffer.from(source + `\n// ${serial++}`).toString('base64')}`);
+    const fresh = await loadScript();
     s.bot = fresh.default.create();
     await s.bot.onStart();
     s.run = async n => {
